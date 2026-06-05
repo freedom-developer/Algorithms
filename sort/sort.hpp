@@ -150,8 +150,8 @@ void quick_3way(Iter s, Iter e, Comp comp = Comp{})
             i++;
     }
 
-    quick_sort_3way(s, lt, comp);
-    quick_sort_3way(std::next(gt), e, comp);
+    quick_3way(s, lt, comp);
+    quick_3way(std::next(gt), e, comp);
 }
 
 /////////// 计数排序，输入为[s, e]
