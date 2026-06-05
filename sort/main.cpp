@@ -1,6 +1,5 @@
 #include "sort.hpp"
 
-#include <iterator>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -12,7 +11,7 @@
 #include <iostream>
 #include <string>
 
-#define N 100
+#define N 100000000
 
 /////////// 测试结构对象
 struct Student {
@@ -22,12 +21,21 @@ struct Student {
 
     operator int () const { return age; }    
 
-    bool operator < (const Student &rhs) // std::less会优化使用此函数
+
+    friend bool operator <= (const Student &lhs, const Student &rhs) // std::less_equal会优化使用此函数
     {
-        if (this->age != rhs.age) return this->age < rhs.age;
-        if (this->score != rhs.score) return this->score < rhs.score;
-        return this->name < rhs.name;
+        if (lhs.age != rhs.age) return lhs.age < rhs.age;
+        if (lhs.score != rhs.score) return lhs.score < rhs.score;
+        return lhs.name <= rhs.name;
     }
+
+    friend bool operator < (const Student &lhs, const Student &rhs) // std::less会优化使用此函数
+    {
+        if (lhs.age != rhs.age) return lhs.age < rhs.age;
+        if (lhs.score != rhs.score) return lhs.score < rhs.score;
+        return lhs.name < rhs.name;
+    }
+
 };
 
 struct StudentLess {
@@ -114,27 +122,33 @@ void test_students(void)
     auto ss3 = students;
     test_func(ss3, wsb::sort::quick_3way<std::vector<Student>::iterator>);
 
-
+    auto ss4 = students;
+    test_func(ss4, wsb::sort::counting<std::vector<Student>::iterator>, 18, 21);
     
 }
 
 
 int main()
 {
-    test_students();
+    // test_students();
 
 
-    // std::vector<int> a1(N);
+    std::vector<int> a1(N);
 
-    // std::srand(time(NULL));
-    // std::generate(a1.begin(), a1.end(), [](){ return std::rand() % (N + 1); });
+    std::srand(time(NULL));
+    std::generate(a1.begin(), a1.end(), [](){ return std::rand() % (10001); });
 
     // auto a2 = a1;
     // test_func(a2, wsb::sort::quick<std::vector<int>::iterator>);
     
+    auto a3 = a1;
+    test_func(a3, wsb::sort::quick_3way<std::vector<int>::iterator>);
     
+    auto a4 = a1;
+    test_func(a4, wsb::sort::counting<std::vector<int>::iterator>, 0, 10000);
 
-    
+    auto a5 = a1;
+    test_func(a5, wsb::sort::countint_i<std::vector<int>::iterator>, 0, 10000);
 
     return 0;
 }
