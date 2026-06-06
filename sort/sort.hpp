@@ -1,4 +1,7 @@
 
+#ifndef WSB_SORT_HPP
+#define WSB_SORT_HPP
+
 #include <iterator>
 #include <type_traits>
 #include <random>
@@ -260,3 +263,6 @@ void countint_i(Iter s, Iter e, int min, int max)
 
 } // namespace sort
 } // namespace wsb
+
+
+#endif
