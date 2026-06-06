@@ -11,7 +11,7 @@
 #include <iostream>
 #include <string>
 
-#define N 100000000
+#define N 100
 
 /////////// 测试结构对象
 struct Student {
@@ -136,7 +136,7 @@ int main()
     std::vector<int> a1(N);
 
     std::srand(time(NULL));
-    std::generate(a1.begin(), a1.end(), [](){ return std::rand() % (10001); });
+    std::generate(a1.begin(), a1.end(), [](){ return std::rand() % (101); });
 
     // auto a2 = a1;
     // test_func(a2, wsb::sort::quick<std::vector<int>::iterator>);
@@ -145,10 +145,13 @@ int main()
     test_func(a3, wsb::sort::quick_3way<std::vector<int>::iterator>);
     
     auto a4 = a1;
-    test_func(a4, wsb::sort::counting<std::vector<int>::iterator>, 0, 10000);
+    test_func(a4, wsb::sort::counting<std::vector<int>::iterator>, 0, 100);
 
     auto a5 = a1;
-    test_func(a5, wsb::sort::countint_i<std::vector<int>::iterator>, 0, 10000);
+    test_func(a5, wsb::sort::countint_i<std::vector<int>::iterator>, 0, 100);
+
+    auto a6 = a1;
+    test_func(a6, wsb::sort::bucket<std::vector<int>::iterator>, 0, 100);
 
     return 0;
 }

@@ -2,15 +2,37 @@
 #ifndef WSB_SORT_HPP
 #define WSB_SORT_HPP
 
+#include <cstddef>
 #include <iterator>
 #include <type_traits>
 #include <random>
 #include <functional>
 #include <cstdlib>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace wsb {
 namespace sort {
+
+namespace detail {
+
+inline ::std::size_t range_size(int min, int max)
+{
+    return static_cast<::std::size_t>(
+        static_cast<long long>(max) - static_cast<long long>(min) + 1);
+}
+
+inline ::std::size_t key_index(int key, int min, int max, const char *algorithm)
+{
+    if (key < min || key > max)
+        throw ::std::out_of_range(algorithm);
+
+    return static_cast<::std::size_t>(
+        static_cast<long long>(key) - static_cast<long long>(min));
+}
+
+} // namespace detail
 
 /*
  * 插入排序，排序范围为 [s, e)。
@@ -157,23 +179,36 @@ void quick_3way(Iter s, Iter e, Comp comp = Comp{})
 }
 
 /*
- * 计数排序，排序范围为 [s, e)，元素值必须位于 [min, max]。
+ * 计数排序，排序范围为 [s, e)，元素的整数键必须位于 [min, max]。
  *
  * 迭代器要求：
  * - Iter 至少是前向迭代器，因为算法需要先统计，再从头写回结果。
  *
  * 元素要求：
- * - 元素需要能转换为 int，用于计算计数数组下标。
- * - 元素需要可复制赋值，用于把排序后的原对象写回原区间。
+ * - value_type 需要能转换为 int，用于取得排序键。
+ * - value_type 需要可默认构造，因为算法会创建输出缓冲区。
+ * - value_type 需要可移动赋值，用于把对象移入缓冲区并写回原区间。
+ *
+ * 排序键：
+ * - key = static_cast<int>(item)。
+ * - 如果 key 不在 [min, max] 内，函数抛出 ::std::out_of_range。
  *
  * 算法思路：
- * - 先把 [s, e) 中的原对象复制到临时容器，避免写回时丢失对象其他成员。
- * - 按对象转换得到的整数键分桶，bucket[i] 保存键为 min + i 的原对象。
- * - 按键从小到大遍历桶，并把桶中的原对象写回原区间。
+ * - counts[i] 记录整数键 min + i 出现的次数。
+ * - 将 counts 原地转换为前缀计数，counts[i] 表示整数键 <= min + i 的元素总数。
+ * - 遍历原区间，把元素移动到 tmp[counts[idx] - 1]，随后递减 counts[idx]。
+ * - 最后把输出缓冲区中的对象移动写回原区间，保留对象完整数据。
+ *
+ * 稳定性：
+ * - 非稳定。当前实现从前向后扫描原区间，但对同一整数键从桶区间右侧向左写入，
+ *   因此相同键元素的相对顺序会反转。
  *
  * 复杂度：
  * - 时间 O(n + k)，其中 n 为元素数量，k = max - min + 1。
  * - 额外空间 O(n + k)。
+ *
+ * 适用场景：
+ * - 适合整数键范围较小、需要保留对象完整数据、但不要求相同键稳定顺序的场景。
  */
 template <typename Iter>
 void counting(Iter s, Iter e, int min, int max)
@@ -182,24 +217,39 @@ void counting(Iter s, Iter e, int min, int max)
     using value_type = typename ::std::iterator_traits<Iter>::value_type;
     static_assert(::std::is_base_of<::std::forward_iterator_tag, category>::value,
                  "counting require a forward iterator");
+    static_assert(::std::is_convertible<value_type, int>::value,
+                 "counting require value_type convertible to int");
+    static_assert(::std::is_default_constructible<value_type>::value,
+                 "counting require default constructible value_type");
+    static_assert(::std::is_move_assignable<value_type>::value,
+                 "counting require move assignable value_type");
 
     if (s == e || max < min)
         return;
 
-    ::std::vector<value_type> items(s, e); // 复制原数据
-    ::std::vector<::std::vector<value_type>> buckets(max - min + 1);
+    const ::std::size_t numbers = detail::range_size(min, max);
+    ::std::vector<::std::size_t> counts(numbers, 0);
 
-    for (const auto &item : items) {
-        int key = static_cast<int>(item);
-        buckets[key - min].push_back(item); // 值与下标关联，值相同的元素在同一个桶中
+    for (auto i = s; i != e; ++i) {
+        const int key = static_cast<int>(*i);
+        const ::std::size_t idx = detail::key_index(key, min, max, "counting key out of range");
+        ++counts[idx];
+    }
+
+    for (::std::size_t i = 1; i < numbers; ++i) 
+        counts[i] += counts[i - 1];
+    
+    ::std::vector<value_type> tmp(::std::distance(s, e));
+    for (auto i = s; i != e; ++i) {
+        const ::std::size_t idx = static_cast<int>(*i) - min;
+        tmp[counts[idx] - 1] = ::std::move(*i);
+        counts[idx]--;
     }
 
     auto out = s;
-    for (const auto &bucket : buckets) { // 遍历下标中的元素列表，将数据按顺序输出
-        for (const auto &item : bucket) {
-            *out = item;
-            ++out;
-        }
+    for (auto &item : tmp) {
+        *out = ::std::move(item);
+        ++out;
     }
 }
 
@@ -258,6 +308,70 @@ void countint_i(Iter s, Iter e, int min, int max)
     }
 
     delete[] tmp;
+}
+
+
+/*
+ * 桶排序，排序范围为 [s, e)，元素的整数键必须位于 [min, max]。
+ *
+ * 迭代器要求：
+ * - Iter 至少是前向迭代器，因为算法需要先分桶，再从头写回结果。
+ *
+ * 元素要求：
+ * - value_type 需要能转换为 int，用于取得排序键。
+ * - value_type 需要可复制构造，因为对象会被放入桶中。
+ * - value_type 需要可赋值，用于把排序后的原对象写回原区间。
+ *
+ * 排序键：
+ * - key = static_cast<int>(item)。
+ * - 如果 key 不在 [min, max] 内，函数抛出 ::std::out_of_range。
+ *
+ * 算法思路：
+ * - 为 [min, max] 中的每个整数键创建一个桶。
+ * - 按输入顺序把原对象追加到对应桶中。
+ * - 最后按桶下标从小到大写回原区间。
+ *
+ * 稳定性：
+ * - 稳定。相同整数键的元素按进入桶的顺序写回。
+ *
+ * 复杂度：
+ * - 时间 O(n + k)，其中 n 为元素数量，k = max - min + 1。
+ * - 额外空间 O(n + k)。
+ *
+ * 适用场景：
+ * - 适合整数键范围较小、并且希望代码直观体现“分桶”过程的场景。
+ * - 如果相同整数键的元素需要保持原相对顺序，可以优先考虑 bucket。
+ * - 如果只需要按整数键排序并追求更少的桶容器开销，可以优先考虑 counting。
+ */
+template <typename Iter>
+void bucket(Iter s, Iter e, int min, int max)
+{
+    using category = typename ::std::iterator_traits<Iter>::iterator_category;
+    using value_type = typename ::std::iterator_traits<Iter>::value_type;
+    static_assert(::std::is_base_of<::std::forward_iterator_tag, category>::value,
+                 "bucket require a forward iterator");
+    static_assert(::std::is_convertible<value_type, int>::value,
+                 "bucket require value_type convertible to int");
+
+    if (s == e || max < min)
+        return;
+
+    const ::std::size_t numbers = detail::range_size(min, max);
+    ::std::vector<::std::vector<value_type>> buckets(numbers);
+
+    for (auto i = s; i != e; ++i) {
+        const int key = static_cast<int>(*i);
+        const ::std::size_t idx = detail::key_index(key, min, max, "bucket key out of range");
+        buckets[idx].push_back(*i);
+    }
+
+    auto out = s;
+    for (const auto &items : buckets) {
+        for (const auto &item : items) {
+            *out = item;
+            ++out;
+        }
+    }
 }
 
 
