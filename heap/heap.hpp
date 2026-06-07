@@ -13,7 +13,7 @@ namespace heap {
 template <
     typename T, 
     typename Container = ::std::vector<T>,
-    typename Comp = ::std::less<typename Container::value_type>
+    typename Comp = ::std::less<typename Container::value_type> // 控制是大堆，还是小堆
 >
 class heap 
 {
