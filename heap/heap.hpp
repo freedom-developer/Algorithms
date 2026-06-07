@@ -10,17 +10,33 @@ namespace heap {
 
 /* 打造一个通用的堆容器，底层用vector保存数据
 */
-template <typename T, typename Comp = ::std::less<T>>
+template <
+    typename T, 
+    typename Container = ::std::vector<T>,
+    typename Comp = ::std::less<typename Container::value_type>
+>
 class heap 
 {
 public:
+    heap(const Comp& comp, const Container &cont) : comp_(comp), cont_(cont)
+    {
+    }
+
+    heap() : heap(Comp{}, Container{}) {}
+
+    template <typename InputIt>
+    heap(InputIt first, InputIt last, const Comp& comp = Comp())
+    {
+        using value_type = ::std::iterator_traits<InputIt>::value_type
+        cont_ = Container<value_type>(::std::distance(first, last));
+        
+        // todo: 用[first, last)填充 cont_
+
+        // todo: 建零
+    }
+
     enum class type { max, min };
-
-    explicit heap(type heap_type = type::max, Comp comp = Comp{}) : type_(heap_type), comp_(comp) {}
-
-    size_t size() { return size_; }
-    bool empty() { return size_ == 0; }
-    
+    explicit heap()
 
 private:
 
@@ -88,12 +104,19 @@ private:
     // 建堆: 从最后非叶子结点开始，
     void _build()
     {
-        
+        if (size_ == 0) 
+            return;
+        auto last_parent = size_ / 2 - 1;
+        for (auto i = last_parent; i >= 0; --i) {
+            _heapify_down(i);
+        }
     }
 
-    ::std::vector<T> data_;
+    
     ::std::size_t size_;
     type type_;
+
+    Container cont_;
     Comp comp_;
 };
 
