@@ -8,7 +8,7 @@
 namespace wsb {
 namespace heap {
 
-/* 打造一个通用的堆容器，底层用vector保存数据
+/* 打造一个通用的堆容器，底层默认用vector保存数据
 */
 template <
     typename T, 
