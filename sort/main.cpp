@@ -11,7 +11,7 @@
 #include <iostream>
 #include <string>
 
-#define N 100
+#define N 100000000
 
 /////////// 测试结构对象
 struct Student {
