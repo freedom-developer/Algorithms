@@ -2,11 +2,42 @@
 #define WSB_HEAP_HPP
 
 #include <cstddef>
+#include <iterator>
 #include <vector>
 #include <functional>
 
 namespace wsb {
 namespace heap {
+
+template <typename Iter, typename Comp>
+Iter is_heap_until(Iter s, Iter e, Comp comp)
+{
+    auto distance = ::std::distance(s, e);
+    decltype(distance) parent = 0;
+    decltype(distance)  child = 1;
+    for (; child < distance; ++child) {
+        if (comp(*std::next(s, parent)), *std::next(s, child))
+            return std::next(s, child);
+        if ((child % 1) == 0)
+            ++parent;
+    }
+    return e;
+}
+
+template <typename Iter, typename Comp>
+bool is_heap(Iter s, Iter e, Comp comp)
+{
+    return is_heap_until(s, e, comp) == e;
+}
+
+
+template <typename Iter, typename Comp = std::less<typename ::std::iterator_traits<Iter>::value_type>>
+void _adjust_heap(Iter s, Iter e, Comp = Comp{})
+{
+    auto distance = ::std::distance(s, e);
+
+}
+
 
 /* 打造一个通用的堆容器，底层默认用vector保存数据
 */
@@ -27,8 +58,6 @@ public:
     template <typename InputIt>
     heap(InputIt first, InputIt last, const Comp& comp = Comp())
     {
-        using value_type = ::std::iterator_traits<InputIt>::value_type
-        cont_ = Container<value_type>(::std::distance(first, last));
         
         // todo: 用[first, last)填充 cont_
 
@@ -36,7 +65,6 @@ public:
     }
 
     enum class type { max, min };
-    explicit heap()
 
 private:
 
