@@ -30,12 +30,33 @@ bool is_heap(Iter s, Iter e, Comp comp)
     return is_heap_until(s, e, comp) == e;
 }
 
-
-template <typename Iter, typename Comp = std::less<typename ::std::iterator_traits<Iter>::value_type>>
-void _adjust_heap(Iter s, Iter e, Comp = Comp{})
+template <typename Iter, typename Distance, typename T, typename CompVal>
+void _push_heap(Iter first, Distance hole_index, Distance top_index, T value, CompVal comp_val)
 {
-    auto distance = ::std::distance(s, e);
+    Distance parent_index = (hole_index - 1) / 2;
+    while (parent_index > top_index && comp_val(*(first + parent_index), value) {
+        *(first + hole_index) = std::move(*(first + parent_index));
+        hole_index = parent_index;
+        parent_index = (hole_index - 1) / 2;
+    }
+    *std::next(first, hole_index) = std::move(value);
+}
 
+template <typename Iter, typename T, 
+    typename CompVal = ::std::less<typename ::std::iterator_traits<Iter>::value_type>
+>
+void push_heap(Iter first, Iter last, CompVal comp = CompVal{})
+{
+    auto distance = ::std::distance(first, last);
+    _push_heap(first, distance - 1, decltype(distance)(0), std::move(*last), comp);
+}
+
+template <typename Iter, typename T, typename Distance,
+    typename CompVal = std::less<typename ::std::iterator_traits<Iter>::value_type>
+>
+void adjust_heap(Iter first, Iter last, CompVal comp = CompVal{})
+{
+    
 }
 
 
