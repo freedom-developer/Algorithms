@@ -42,6 +42,11 @@ struct rb_root_cached {
 #define rb_is_black(rb) __rb_is_black((rb)->parent_color)
 #define rb_is_red(rb) __rb_is_red((rb)->parent_color)
 
+#define rb_set_color(rb, color) (((rb)->parent_color & ~3) | (color & 1))
+
+#define RB_EMPTY_NODE(node) ((node)->parent_color == (unsigned long)node)
+#define RB_CLEAR_NODE(node) ((node)->parent_color = (unsigned long)node)
+
 static inline void rb_set_parent(struct rb_node *rb, struct rb_node *p)
 {
     rb->parent_color = rb_color(rb) | (unsigned long)p;
@@ -52,7 +57,6 @@ static inline void rb_set_parent_color(struct rb_node *rb, struct rb_node *p, in
     rb->parent_color = (unsigned long)p | color;
 }
 
-
-// 增加时
+void rb_insert_color(struct rb_node *node, struct rb_root *root);
 
 #endif
