@@ -285,64 +285,149 @@ void rb_insert_augmented(struct rb_root *root, struct rb_node *node, struct rb_a
 }
 
 // 删除节点，并返回需要调整颜色的黑色节点
-void _rb_erase_augmented(struct rb_root *root, struct rb_node *n, struct rb_augment_callbacks *augment)
+static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node *n, struct rb_augment_callbacks *augment)
 {
     struct rb_node *nl = n->left;
     struct rb_node *nr = n->right;
-    struct rb_node *rebalance, *augment_node; // 需要调整颜色的节点，它必须是一个黑色节点
+    struct rb_node *rebalance; // 需要调整颜色的节点，它必须是一个黑色节点
 
     // 重点：如果 n 只有一个 子节点，则 子节点 一定是红色，n 一定是黑色
     if (!nl) { // 左空，用右代替 n
         _rb_replace_node(root, n, nr);
         if (nr) { 
-            /* 左空，右非空且红, n 黑：
+            /*          nB
+             *         /  \
+             *       nil   nrR
+             * 操作步骤：
              *  - 右替 n 且置黑
-             *  - 无须调整颜色
-             *  - 从 n 的 parent 开始 往上调整 扩展信息
+             *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
              */
             _rb_replace_node(root, n, nr);
-            rb_set_color(nr, rb_color(n));
-            rebalance = NULL;
-            augment_node = rb_parent(n);
+            rb_set_color(nr, RB_BLACK);
+
+            rebalance = NULL; // 无须调整任何节点颜色
+            
+            if (augment && augment->propagate)
+                augment->propagate(rb_parent(n), NULL);
         } else {
-            /* 左右均为空：
+            /*       n
+             *      / \
+             *    nil  nil
+             * 操作步骤：
              *  - 如 n 黑，则 需要调整 n 的 parent 颜色，否则无须调整颜色
-             *  - 从 n 的 parent 开始 往上调整 扩展信息
+             *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
              */
             rebalance = rb_is_black(n) ? rb_parent(nr) : NULL;
-            augment_node = rb_parent(n);
+            if (augment && augment->propagate)
+                augment->propagate(rb_parent(n), NULL);
         }
     } else if (!nr) {
-        /* 左非空且红，右空, n 黑
+        /*         nB
+         *        /  \
+         *      nlR  nil
+         * 操作步骤：
          *  - 左替 n 且置黑
-         *  - 无须调整颜色
-         *  - 从 n 的 parent 开始 往上调整 扩展信息
+         *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
          */
         _rb_replace_node(root, n, nl);
-        rb_set_color(nl, rb_color(n));
+        rb_set_color(nl, RB_BLACK);
+
         rebalance = NULL;
-        augment_node = rb_parent(n);
+
+        if (augment && augment->propagate)
+            augment->propagate(rb_parent(n), NULL);
     } else {
-        /* 左右均非空：
-         *  - 
-         *
-         */
+        /* 左右均非空 */
         struct rb_node *successor;
         if (!nr->left) {
-            /* 如 nr 无左：
-             *  - 
-             *
+            /*         n
+             *        / \
+             *       nl  nrB
+             *            \
+             *           nrrR or nil
+             * 如 nr 无左，nr.right 为红，nr 为黑：
+             *  - 用 nr 代替 n, 且颜色为 n 的颜色
+             *  - 将 n 的 扩展信息 复制到 nr 上，并从 nr 往上调整扩展信息
+             *  - 如果 nrr 为空且 nr 为黑，则从 nr 调整颜色
+             *  - 如果nrr 不为空，则为红，将它置黑即可
              */
-            successor = nr;
-            augment->copy(n, successor);
-        } else {
+            _rb_replace_node(root, n, nr);            
+            nr->left = nl;
+            rb_set_parent(nr->left, nr);
+            unsigned long nr_color = rb_color(nr);
+            rb_set_color(nr, rb_color(n));
 
+            if (augment && augment->copy)
+                augment->copy(n, nr);
+            if (augment && augment->propagate)
+                augment->propagate(nr, NULL);
+
+            if (nr->right) {
+                rebalance = NULL;
+                rb_set_color(nr->right, RB_BLACK);
+            } else {
+                rebalance = (nr_color & RB_BLACK) ? nr : NULL;
+            }
+        } else {
+            /*           n
+             *          / \
+             *         nl  nr
+             *            /  \
+             *          nrl  nrr
+             *            \
+             *           nrlr : 红
+             * 操作步骤：
+             *  - nrl 代替 n ，及其颜色
+             *  - nrl 扩展信息 为 n
+             *  - nrlr 不为空，代替 nrl, 且置黑
+             *  - nrlr 为空，如 nrl 为黑，则调整 nr 的颜色
+             *  - 从 nr 至根 调整扩展信息 
+             */
+            struct rb_node *successor = rb_leftmost_of_node(nr);
+            struct rb_node *sr = successor->right;
+            struct rb_node *sp = rb_parent(successor);
+            unsigned long s_color = rb_color(successor);
+            unsigned long nr_color = rb_color(nr);
+
+            _rb_replace_node(root, n, successor);
+            successor->left = nl;
+            rb_set_parent(nl, successor);
+            successor->right = nr;
+            rb_set_parent(nr, successor);
+            rb_set_color(successor, rb_color(n));
+            
+            if (augment && augment->copy)
+                augment->copy(n, successor);
+            if (augment && augment->propagate)
+                augment->propagate(sp, NULL);
+
+            if (sr) {
+                sp->left = sr;
+                rb_set_parent_color(sr, sp, RB_BLACK);
+                rebalance = NULL;
+            } else {
+                rebalance = (s_color & RB_BLACK) ? sp : NULL;
+            }
         }
     }
 
-    augment->propagate(augment_node, NULL);
     return rebalance;
 }
 
+/* 调整经过 n 的所有叶结点的黑节点数加1
+ */
+static void _rb_erase_color(struct rb_root *root, struct rb_node *n, 
+    void (*augment_rotate(struct rb_node *old, struct rb_node *new)))
+{
+    while (true) {
 
+    }
+}
+
+void rb_erase_augmented(struct rb_root *root, struct rb_node *n, struct rb_augment_callbacks *augment)
+{
+    struct rb_node *rebalance = _rb_erase_augmented(root, n, augment);
+    if (rebalance)
+        _rb_erase_color(root, rebalance,  augment ? augment->rotate : NULL);
+}
 
