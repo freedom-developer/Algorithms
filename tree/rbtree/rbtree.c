@@ -290,52 +290,70 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
 {
     struct rb_node *nl = n->left;
     struct rb_node *nr = n->right;
-    struct rb_node *rebalance; // 需要调整颜色的节点，它必须是一个黑色节点
+    struct rb_node *rebalance = NULL; // 需要调整颜色的节点，它必须是一个黑色节点
 
-    // 重点：如果 n 只有一个 子节点，则 子节点 一定是红色，n 一定是黑色
-    if (!nl) { // 左空，用右代替 n
+    /* 重点：
+     *  如果 n 只有一个 子节点，则 子节点 一定是红色，n 一定是黑色。
+     *  因为在红黑树中, 空节点 NIL 被认为是黑色的，如果 n 只有一个子节点,
+     *  且该子节点是黑色的，那么从 n 到该子节点的入下的 NIL 节点一定比 n 往另一侧往下的 NIL 节点的黑高多1.
+     *  所以可以得出结论：如果 n只有一个子节点，则该子节点一定是红色，n 一定是黑色，并且该子节点一定没有子节点
+     */
+    if (!nl) {
+        /* 情况一：被删节点最多只有一个子节点，这里假设左子节点为空，则情形如下
+         *       
+         */
         _rb_replace_node(root, n, nr);
-        if (nr) { 
-            /*          nB
-             *         /  \
-             *       nil   nrR
-             * 操作步骤：
-             *  - 右替 n 且置黑
-             *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
+        if (nr) {
+            /*       n(B)               nr(B)
+             *       /  \               /  \
+             *      N  nr(R) ->        N    N
+             *            / \
+             *           N   N
+             * 注意：此情形，将 nr 置黑后，不需要调整节点颜色
              */
-            _rb_replace_node(root, n, nr);
             rb_set_color(nr, RB_BLACK);
-
-            rebalance = NULL; // 无须调整任何节点颜色
-            
-            if (augment && augment->propagate)
-                augment->propagate(rb_parent(n), NULL);
         } else {
-            /*       n
+            /* 分两种情形：n 为红色和黑色
+             *    情形一: n为红色
+             *         p(B)                        p(B)
+             *        /   \                        / \
+             *      n(R)   s(R or N)     ->       N  s(R or N)
              *      / \
-             *    nil  nil
-             * 操作步骤：
-             *  - n 的位置用NULL代替
-             *  - 如 n 黑，则 需要调整 n 的 parent 颜色，否则无须调整颜色
-             *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
+             *     N   N
+             * 此情形只需要删除 n 节点即可，不需要调整颜色
+             *    情形二：n 为黑色
+             *            p
+             *      /         \
+             *    n(B)        s(B)
+             *   /  \      /       \ 
+             *  N   N  sl(R or N)  sr: (R or N)
+             *         / \         / \
+             *        N   N       N   N
+             * 此情形需要调整 n 的父节点的颜色, 即待调整颜色的节点情形如下：
+             *        p
+             *       / \
+             *      N  s(B)
+             *         /  \
+             *       sl    sr    <- sl, sr 均(R or N)
+             *      / \   / \
+             *     N  N  N  N
              */
-            _rb_replace_node(root, n, NULL);
             rebalance = rb_is_black(n) ? rb_parent(n) : NULL;
-            if (augment && augment->propagate)
-                augment->propagate(rb_parent(n), NULL);
         }
+
+        if (augment && augment->propagate)
+            augment->propagate(rb_parent(n), NULL);
+        
     } else if (!nr) {
-        /*         nB
-         *        /  \
-         *      nlR  nil
-         * 操作步骤：
-         *  - 左替 n 且置黑
-         *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
+        /* 仍然属于情形一的一种情况：左非空，右空
+         *         n(B)          nl(B)
+         *        /  \    ->    /  \
+         *      nl(R) N        N    N
+         *     / \
+         *    N  N
          */
         _rb_replace_node(root, n, nl);
         rb_set_color(nl, RB_BLACK);
-
-        rebalance = NULL;
 
         if (augment && augment->propagate)
             augment->propagate(rb_parent(n), NULL);
@@ -345,32 +363,45 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
         if (!nr->left) {
             /*         n
              *        / \
-             *       nl  nrB
+             *       nl  nr
              *            \
-             *           nrrR or nil
-             * 如 nr 无左，nr.right 为红，nr 为黑：
-             *  - 用 nr 代替 n, 且颜色为 n 的颜色
-             *  - 将 n 的 扩展信息 复制到 nr 上，并从 nr 往上调整扩展信息
-             *  - 如果 nrr 为空且 nr 为黑，则从 nr 调整颜色
-             *  - 如果nrr 不为空，则为红，将它置黑即可
+             *           nrr(R or N)
              */
-            _rb_replace_node(root, n, nr);            
+            unsigned long pc = n->parent_color;
+            unsigned long nr_color = rb_color(nr);
+            nr->parent_color = pc; // 如 nr_color 为黑色，则 nr 的右子树的黑高减1，需要调整 nr 的的颜色
             nr->left = nl;
             rb_set_parent(nl, nr);
-            unsigned long nr_color = rb_color(nr);
-            rb_set_color(nr, rb_color(n));
+
+            if (nr->right) {
+                /*        n                          nr(color of n)
+                 *       / \                        /  \
+                 *     nl  nr(B)        ->        nl    nrr(B)
+                 *         /  \                        /  \
+                 *        N   nrr(R)                  N    N
+                 *            /  \
+                 *           N   N
+                 * 无须调整颜色
+                 */
+                rb_set_color(nr->right, RB_BLACK);
+            } {
+                /*         n                     nr(color of n)
+                 *        / \                   /  \
+                 *      nl   nr        ->     nl    N
+                 *           / \
+                 *          N  N
+                 * 当nr 为黑时，nr 的右侧子树的黑高减1，需要调整 nr 的颜色
+                 */
+            }
 
             if (augment && augment->copy)
                 augment->copy(n, nr);
+
             if (augment && augment->propagate)
                 augment->propagate(nr, NULL);
-
-            if (nr->right) {
-                rebalance = NULL;
-                rb_set_color(nr->right, RB_BLACK);
-            } else {
-                rebalance = (nr_color & RB_BLACK) ? nr : NULL;
-            }
+    
+            rebalance = (nr_color & RB_BLACK) ? nr : NULL;
+            
         } else {
             /*           n
              *          / \
@@ -450,10 +481,12 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
                      *      N   sB
                      *         /  \
                      *        sl  sr  
-                     * sl, sr要么都为空，要么都为黑。如果sl为空，sr不为空，则sr一定为红
+                     * 注意：
+                     *  - sl, sr要么都为空，要么都为黑。如果sl为空，sr不为空，则sr一定为红
+                     *  - 如果 s 为黑，则 N 一定不为空
                      */
                     rb_set_color(sibling, RB_RED);
-                    if (rb_is_black(parent)) {
+                    if (rb_is_red(parent)) {
                         rb_set_color(parent, RB_BLACK);
                     } else {
                         node = parent;
@@ -484,6 +517,13 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
                 sr = sibling;
                 sibling =  sl;
             }
+            /*         p
+             *        / \
+             *       N   s
+             *          / \
+             *         sl  sr
+             *
+             */
             
 
         } else {
