@@ -384,14 +384,15 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
                  * 无须调整颜色
                  */
                 rb_set_color(nr->right, RB_BLACK);
-            } {
+            } else {
                 /*         n                     nr(color of n)
                  *        / \                   /  \
                  *      nl   nr        ->     nl    N
                  *           / \
-                 *          N  N
+                 *          N   N
                  * 当nr 为黑时，nr 的右侧子树的黑高减1，需要调整 nr 的颜色
                  */
+                rebalance = (nr_color & RB_BLACK) ? nr : NULL;
             }
 
             if (augment && augment->copy)
@@ -399,8 +400,6 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
 
             if (augment && augment->propagate)
                 augment->propagate(nr, NULL);
-    
-            rebalance = (nr_color & RB_BLACK) ? nr : NULL;
             
         } else {
             /*           n
