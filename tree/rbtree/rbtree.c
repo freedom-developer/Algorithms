@@ -464,16 +464,25 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
                     break;
                 }
 
-                /*         p
-                 *        / \
-                 *       N  sB
-                 *          / \
-                 *         sl  sr
-                 * 
-                 * 
+                /*         p                  p
+                 *        / \                / \
+                 *       N  sB      ->      N   sl
+                 *          / \                   \
+                 *         sl  sr                 sB
+                 *           \                    / \
+                 *           slr                slr  sr
+                 * Note:       
+                 *  - sr要么为空，要么为黑, sl存在且一定为红
+                 *  
                  */
-                _rb_right_rotate(root, sibling);
-
+                struct rb_node *slr = sl->right;
+                 _rb_right_rotate(root, sibling);
+                if (slr)
+                    rb_set_color(slr, RB_BLACK);
+                if (augment_rotate)
+                    augment_rotate(sibling, sl);
+                sr = sibling;
+                sibling =  sl;
             }
             
 
