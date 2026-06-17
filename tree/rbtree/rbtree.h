@@ -66,15 +66,15 @@ struct rb_augment_callbacks {
     // 往 node 往上重新计算 扩展信息 , 直到 stop
     void (*propagate)(struct rb_node *node, struct rb_node *stop);
     // 当 new 代替 old 树位置时，把 old 的 扩展信息 复制到 new 中
-    void (*copy)(struct rb_node *old, struct rb_node *new);
+    void (*copy)(struct rb_node *old, struct rb_node *newn);
     // 红黑树旋转更新受影响的节点 扩展信息
-    void (*rotate)(struct rb_node *old, struct rb_node *new);
+    void (*rotate)(struct rb_node *old, struct rb_node *newn);
 };
 
 void rb_insert_color(struct rb_root *root, struct rb_node *node);
 
 void _rb_insert_augmented(struct rb_root *root, struct rb_node *node, 
-    void (*augment_rotate)(struct rb_node *old, struct rb_node *new));
+    void (*augment_rotate)(struct rb_node *old, struct rb_node *newn));
 
 void rb_insert_augmented(struct rb_root *root, struct rb_node *node, struct rb_augment_callbacks *augment);
 

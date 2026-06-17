@@ -17,7 +17,7 @@ inline struct rb_node *rb_rightmost_of_node(struct rb_node *n)
         return NULL;
     while (n->right)
         n = n->right;
-    return ;
+    return n;
 }
 
 inline struct rb_node *rb_leftmost(struct rb_root *root)
@@ -78,7 +78,8 @@ inline void _rb_replace_node(struct rb_root *root, struct rb_node *old, struct r
 {
     struct rb_node *parent = rb_parent(old);
 
-    rb_set_parent(new, parent);
+    if (new)
+        rb_set_parent(new, parent);
     if (parent) {
         if (old == parent->left)
             parent->left = new;
@@ -314,10 +315,12 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
              *      / \
              *    nil  nil
              * 操作步骤：
+             *  - n 的位置用NULL代替
              *  - 如 n 黑，则 需要调整 n 的 parent 颜色，否则无须调整颜色
              *  - 从 n 的 parent 开始至树根 往上调整 扩展信息
              */
-            rebalance = rb_is_black(n) ? rb_parent(nr) : NULL;
+            _rb_replace_node(root, n, NULL);
+            rebalance = rb_is_black(n) ? rb_parent(n) : NULL;
             if (augment && augment->propagate)
                 augment->propagate(rb_parent(n), NULL);
         }
@@ -353,7 +356,7 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
              */
             _rb_replace_node(root, n, nr);            
             nr->left = nl;
-            rb_set_parent(nr->left, nr);
+            rb_set_parent(nl, nr);
             unsigned long nr_color = rb_color(nr);
             rb_set_color(nr, rb_color(n));
 
@@ -387,7 +390,6 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
             struct rb_node *sr = successor->right;
             struct rb_node *sp = rb_parent(successor);
             unsigned long s_color = rb_color(successor);
-            unsigned long nr_color = rb_color(nr);
 
             _rb_replace_node(root, n, successor);
             successor->left = nl;
@@ -395,32 +397,89 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
             successor->right = nr;
             rb_set_parent(nr, successor);
             rb_set_color(successor, rb_color(n));
-            
-            if (augment && augment->copy)
-                augment->copy(n, successor);
-            if (augment && augment->propagate)
-                augment->propagate(sp, NULL);
 
+            sp->left = sr;
             if (sr) {
-                sp->left = sr;
                 rb_set_parent_color(sr, sp, RB_BLACK);
                 rebalance = NULL;
             } else {
                 rebalance = (s_color & RB_BLACK) ? sp : NULL;
             }
+            
+            if (augment && augment->copy)
+                augment->copy(n, successor);
+            if (augment && augment->propagate)
+                augment->propagate(sp, NULL);
         }
     }
 
     return rebalance;
 }
 
-/* 调整经过 n 的所有叶结点的黑节点数加1
- */
-static void _rb_erase_color(struct rb_root *root, struct rb_node *n, 
+/* 因为n有一个为黑色的叶子节点被移除了，所以要调整该n */
+static void _rb_erase_color(struct rb_root *root, struct rb_node *parent, 
     void (*augment_rotate(struct rb_node *old, struct rb_node *new)))
 {
+    struct rb_node *node = NULL, *sibling;
     while (true) {
+        if (node != parent->right) { // node = parent.left, 可能为NIL或黑色
+            sibling = parent->right; // parent.right一定不为空
+            if (rb_is_red(sibling)) { // parent, sibling子节点均为黑
+                /*      pB                  sB
+                 *      / \                 / \
+                 *     N   sR      ->     pR   srB
+                 *        /  \            / \
+                 *      slB  srB         N   slB
+                 *  sl, sr一定不为空, 且为黑，p也为黑
+                 */
+                struct rb_node *sl = sibling->left;
+                _rb_left_rotate(root, parent);
+                rb_set_color(sibling, rb_color(parent));
+                rb_set_color(parent, RB_RED); // 为什么要将parent置红
 
+                if (augment_rotate)
+                    augment_rotate(parent, sibling);
+                sibling = sl;
+            }
+            struct rb_node *sr = sibling->right;
+            if (!sr || rb_is_black(sr)) {
+                struct rb_node *sl = sibling->left;
+                if (!sl || rb_is_black(sl)) {
+                    /*        p
+                     *       / \
+                     *      N   sB
+                     *         /  \
+                     *        sl  sr  
+                     * sl, sr要么都为空，要么都为黑。如果sl为空，sr不为空，则sr一定为红
+                     */
+                    rb_set_color(sibling, RB_RED);
+                    if (rb_is_black(parent)) {
+                        rb_set_color(parent, RB_BLACK);
+                    } else {
+                        node = parent;
+                        parent = rb_parent(node);
+                        if (parent)
+                            continue;
+                    }
+                    break;
+                }
+
+                /*         p
+                 *        / \
+                 *       N  sB
+                 *          / \
+                 *         sl  sr
+                 * 
+                 * 
+                 */
+                _rb_right_rotate(root, sibling);
+
+            }
+            
+
+        } else {
+
+        }
     }
 }
 
