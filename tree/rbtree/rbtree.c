@@ -299,8 +299,7 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
      *  所以可以得出结论：如果 n只有一个子节点，则该子节点一定是红色，n 一定是黑色，并且该子节点一定没有子节点
      */
     if (!nl) {
-        /* 情况一：被删节点最多只有一个子节点，这里假设左子节点为空，则情形如下
-         *       
+        /* 情况一：被删节点最多只有一个子节点，这里假设左子节点为空，则情形如下   
          */
         _rb_replace_node(root, n, nr);
         if (nr) {
@@ -350,7 +349,7 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
          *        /  \    ->    /  \
          *      nl(R) N        N    N
          *     / \
-         *    N  N
+         *    N   N
          */
         _rb_replace_node(root, n, nl);
         rb_set_color(nl, RB_BLACK);
@@ -377,10 +376,8 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
                 /*        n                          nr(color of n)
                  *       / \                        /  \
                  *     nl  nr(B)        ->        nl    nrr(B)
-                 *         /  \                        /  \
-                 *        N   nrr(R)                  N    N
-                 *            /  \
-                 *           N   N
+                 *         /  \                 
+                 *        N   nrr(R)                  
                  * 无须调整颜色
                  */
                 rb_set_color(nr->right, RB_BLACK);
@@ -455,31 +452,33 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
         if (node != parent->right) { // node = parent.left, 可能为NIL或黑色
             sibling = parent->right; // parent.right一定不为空
             if (rb_is_red(sibling)) { // parent, sibling子节点均为黑
-                /*      pB                  sB
-                 *      / \                 / \
-                 *     N   sR      ->     pR   srB
+                /* Case 1:
+                 *       p                   s(p)
+                 *      / \                 /   \
+                 *     N  s(R)      ->    p(R)  sr(B)
                  *        /  \            / \
-                 *      slB  srB         N   slB
-                 *  sl, sr一定不为空, 且为黑，p也为黑
+                 *    sl(B)  sr(B)       N  sl(B)
+                 *  sl, sr一定不为空, 且为黑
                  */
-                struct rb_node *sl = sibling->left;
                 _rb_left_rotate(root, parent);
                 rb_set_color(sibling, rb_color(parent));
-                rb_set_color(parent, RB_RED); // 为什么要将parent置红
+                rb_set_color(parent, RB_RED);
 
                 if (augment_rotate)
                     augment_rotate(parent, sibling);
-                sibling = sl;
+                sibling = parent->right;
             }
+            // sibling 为黑
             struct rb_node *sr = sibling->right;
             if (!sr || rb_is_black(sr)) {
                 struct rb_node *sl = sibling->left;
                 if (!sl || rb_is_black(sl)) {
-                    /*        p
-                     *       / \
-                     *      N   sB
-                     *         /  \
-                     *        sl  sr  
+                    /* Case 2:
+                     *        p                    p      <- node
+                     *       / \                  / \
+                     *      N  s(B)      ->      N  s(R)
+                     *         /  \                 /  \
+                     *        sl  sr               sl  sr
                      * 注意：
                      *  - sl, sr要么都为空，要么都为黑。如果sl为空，sr不为空，则sr一定为红
                      *  - 如果 s 为黑，则 N 一定不为空
@@ -496,36 +495,122 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
                     break;
                 }
 
-                /*         p                  p
-                 *        / \                / \
-                 *       N  sB      ->      N   sl
-                 *          / \                   \
-                 *         sl  sr                 sB
-                 *           \                    / \
-                 *           slr                slr  sr
+                /* Case 3:
+                 *          p                  p
+                 *        /  \                / \
+                 *       N   s(B)    ->      N  sl(R)
+                 *          /  \                /  \
+                 *       sl(R)  sr             N   s(B)
+                 *        /  \                     / \
+                 *       N    N                   N   sr
                  * Note:       
                  *  - sr要么为空，要么为黑, sl存在且一定为红
                  *  
                  */
                 struct rb_node *slr = sl->right;
                  _rb_right_rotate(root, sibling);
-                if (slr)
-                    rb_set_color(slr, RB_BLACK);
+
                 if (augment_rotate)
                     augment_rotate(sibling, sl);
                 sr = sibling;
                 sibling =  sl;
             }
-            /*         p
-             *        / \
-             *       N   s
-             *          / \
-             *         sl  sr
+
+            /* Case 4:
+             *          p                         s(p)
+             *        /   \                      /   \
+             *       N    s(R)        ->       p(B)   sr(B)
+             *           /    \                /  \
+             *       sl(R)    sr(B)           N   sl(R)
              *
              */
-            
+            _rb_left_rotate(root, parent);
+            rb_set_color(sibling, rb_color(parent));
+            rb_set_color(parent, RB_BLACK);
 
+            if (augment_rotate)
+                augment_rotate(parent, sibling);
+
+            break;
         } else {
+            sibling = parent->left;
+            if (rb_is_red(sibling)) {
+                /* Case 1:
+                 *           p(B)                   s(p)
+                 *           / \                    /  \
+                 *        s(R)  N      ->        sl(B) p(R)
+                 *        /  \                        /   \
+                 *     sl(B) sr(B)             s->  sr(B)  N
+                 */
+                struct rb_node *sr = sibling->right;
+                _rb_right_rotate(root, parent);
+                rb_set_color(sibling, rb_color(parent));
+                rb_set_color(parent, RB_RED);
+                
+                if (augment_rotate)
+                    augment_rotate(parent, sibling);
+
+                sibling = parent->left;
+            }
+            
+            struct rb_node *sl = sibling->left;
+            if (!sl || rb_is_black(sl)) {
+                struct rb_node *sr = sibling->right;
+                if (!sr || rb_is_black(sr)) {
+                    /* Case 2:
+                    *            p                    p   <- node
+                    *           / \                  / \
+                    *         s(B) N     ->       s(R)  N
+                    *         / \                 / \
+                    *       sl  sr               sl  sr
+                    * Note:
+                    *   sl, sr 要么都空，要么都为黑
+                    */
+                    rb_set_color(sibling, RB_RED);
+                    if (rb_is_red(parent)) {
+                        rb_set_color(parent, RB_BLACK);
+                    } else {
+                        node = parent;
+                        parent = rb_parent(node);
+                        if (parent)
+                            continue;
+                    }
+                    break;
+                }
+
+                /* Case 3:
+                 *            p                        p
+                 *          /   \                    /   \
+                 *        s(B)   N     ->          sr(R)  N
+                 *        /  \                     / \
+                 *       sl  sr(R)               s(B) srr(B)
+                 *                               / \
+                 *                              sl  srl
+                 * Note:
+                 *  sl为空或黑
+                 */
+
+                _rb_left_rotate(root, sibling);
+                if (augment_rotate)
+                    augment_rotate(sibling, sr);
+                
+                sl = sibling;
+                sibling = sr;
+            }
+
+            /* Case 4:
+             *         p                        s(p)
+             *       /   \                     /   \
+             *     s(B)   N   ->            sl(R)  p(B)
+             *     / \                            /  \
+             *  sl(R) sr                        sr    N
+             * Note:
+             *  sl 非空且红
+             */
+            _rb_right_rotate(root, parent);
+            rb_set_color(sibling, rb_color(parent));
+            rb_set_color(parent, RB_BLACK);
+
 
         }
     }
