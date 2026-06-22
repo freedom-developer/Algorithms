@@ -1,80 +1,10 @@
 #include "rbtree.h"
 
-// n 子树的最左边的节点，通常也是最小的节点
-inline struct rb_node *rb_leftmost_of_node(struct rb_node *n)
-{
-    if (!n) 
-        return NULL;
-    while (n->left) 
-        n = n->left;
-    return n;
-}
-
-// n 子树的最右边的节点，通常也是最大的节点
-inline struct rb_node *rb_rightmost_of_node(struct rb_node *n)
-{
-    if (!n) 
-        return NULL;
-    while (n->right)
-        n = n->right;
-    return n;
-}
-
-inline struct rb_node *rb_leftmost(struct rb_root *root)
-{
-    return rb_leftmost_of_node(root->rb_node);
-}
-
-inline struct rb_node *rb_rightmost(struct rb_root *root)
-{
-    return rb_rightmost_of_node(root->rb_node);
-}
-
-// 与rb_leftmost 同义
-inline struct rb_node *rb_first(const struct rb_root *root)
-{
-    return rb_leftmost(root);
-}
-
-// 与rb_rightmost 同义
-inline struct rb_node *rb_last(const struct rb_root *root)
-{
-    return rb_rightmost(root);
-}
-
-// 后继：大于 node 的最小的节点
-struct rb_node *rb_next(const struct rb_node *node)
-{
-    if (RB_EMPTY_NODE(node)) 
-        return NULL;
-    if (node->right) 
-        return rb_leftmost_of_node(node->right);
-
-    struct rb_node *parent;
-    while ((parent = rb_parent(node)) && node == parent->right)
-        node = parent;
-    return parent;
-}
-
-// 前驱：小于 node 的最大的节点
-struct rb_node *rb_prev(const struct rb_node *node)
-{
-    struct rb_node *parent;
-    if (RB_EMPTY_NODE(node)) 
-        return NULL;
-    if (node->left) 
-        return rb_rightmost_of_node(node->left);
-    
-    while ((parent = rb_parent(node)) && node == parent->left)
-        node = parent;
-    return parent;
-}
-
 
 /* 替换节点: 不改变节点颜色，不作 扩展信息 调整
  *  将new 子树 替换 old 子树
  */
-inline void _rb_replace_node(struct rb_root *root, struct rb_node *old, struct rb_node *new)
+void _rb_replace_node(struct rb_root *root, struct rb_node *old, struct rb_node *new)
 {
     struct rb_node *parent = rb_parent(old);
 
@@ -268,21 +198,15 @@ static void _rb_insert_color_augmented(struct rb_root *root, struct rb_node *n,
     }
 }
 
-// 不调整 扩展信息
-void rb_insert_color(struct rb_root *root, struct rb_node *node)
-{
-    _rb_insert_color_augmented(root, node, NULL);
-}
-
-void _rb_insert_augmented(struct rb_root *root, struct rb_node *node, 
-    void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
-{
-    _rb_erase_color_augmented(root, node, augment_rotate);
-}
+// // 不调整 扩展信息
+// void rb_insert_color(struct rb_root *root, struct rb_node *node)
+// {
+//     _rb_insert_color_augmented(root, node, NULL);
+// }
 
 void rb_insert_augmented(struct rb_root *root, struct rb_node *node, struct rb_augment_callbacks *augment)
 {
-    _rb_insert_augmented(root, node, augment->rotate);
+    _rb_insert_color_augmented(root, node, augment ? augment->rotate : NULL);
 }
 
 // 删除节点，并返回需要调整颜色的黑色节点
@@ -445,7 +369,7 @@ static struct rb_node *_rb_erase_augmented(struct rb_root *root, struct rb_node 
 
 /* 因为n有一个为黑色的叶子节点被移除了，所以要调整该n */
 static void _rb_erase_color(struct rb_root *root, struct rb_node *parent, 
-    void (*augment_rotate(struct rb_node *old, struct rb_node *new)))
+    void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
 {
     struct rb_node *node = NULL, *sibling;
     while (true) {
@@ -496,13 +420,13 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
                 }
 
                 /* Case 3:
-                 *          p                  p
-                 *        /  \                / \
-                 *       N   s(B)    ->      N  sl(R)
-                 *          /  \                /  \
-                 *       sl(R)  sr             N   s(B)
-                 *        /  \                     / \
-                 *       N    N                   N   sr
+                 *          p                   p
+                 *        /   \                / \
+                 *       N    s(B)    ->      N  sl(R)
+                 *            /  \                /  \
+                 *          sl(R)  sr            N   s(B)
+                 *          /  \                     / \
+                 *         N    N                   N   sr
                  * Note:       
                  *  - sr要么为空，要么为黑, sl存在且一定为红
                  *  
@@ -611,7 +535,10 @@ static void _rb_erase_color(struct rb_root *root, struct rb_node *parent,
             rb_set_color(sibling, rb_color(parent));
             rb_set_color(parent, RB_BLACK);
 
+            if (augment_rotate)
+                augment_rotate(parent, sibling);
 
+            break;
         }
     }
 }
@@ -622,4 +549,3 @@ void rb_erase_augmented(struct rb_root *root, struct rb_node *n, struct rb_augme
     if (rebalance)
         _rb_erase_color(root, rebalance,  augment ? augment->rotate : NULL);
 }
-

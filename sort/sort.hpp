@@ -17,13 +17,13 @@ namespace sort {
 
 namespace detail {
 
-inline ::std::size_t range_size(int min, int max)
+static inline ::std::size_t range_size(int min, int max)
 {
     return static_cast<::std::size_t>(
         static_cast<long long>(max) - static_cast<long long>(min) + 1);
 }
 
-inline ::std::size_t key_index(int key, int min, int max, const char *algorithm)
+static inline ::std::size_t key_index(int key, int min, int max, const char *algorithm)
 {
     if (key < min || key > max)
         throw ::std::out_of_range(algorithm);
